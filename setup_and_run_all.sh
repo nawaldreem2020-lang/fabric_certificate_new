@@ -79,7 +79,7 @@ organizations:
             path: '../test-network/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/signcerts/cert.pem'
     connectionProfile:
       path: '../test-network/organizations/peerOrganizations/org1.example.com/connection-org1.yaml'
-      discover: true
+      discover: false
 EOF
 
 # 7. تنفيذ الاختبار الشامل (50-200 TPS)
