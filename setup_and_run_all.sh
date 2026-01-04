@@ -81,7 +81,7 @@ echo -e "${GREEN}🚀 تشغيل اختبار Caliper الشامل (50-200 TPS).
 npx caliper launch manager \
     --caliper-workspace . \
     --caliper-networkconfig networks/networkConfig.yaml \
-    --caliper-benchconfig benchmarks/benchConfig.yaml \
+    --caliper-benchconfig benchmarks/benchConfig2.yaml \
     --caliper-flow-only-test
 
 echo -e "${GREEN}==================================================${NC}"
