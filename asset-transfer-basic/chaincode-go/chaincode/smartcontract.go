@@ -10,14 +10,14 @@ import (
 	"math/big"
 
 	"github.com/hyperledger/fabric-contract-api-go/v2/contractapi"
-	"golang.org/x/crypto/sha3" 
+	"golang.org/x/crypto/sha3"
 )
 
 type SmartContract struct {
 	contractapi.Contract
 }
 
-// Certificate المطور ليشمل منطق التوقيع (منهجية عمر سعد)
+// Certificate المطور (تمت إضافة العلامات المائلة لضمان عمل الـ JSON بشكل صحيح)
 type Certificate struct {
 	ID          string `json:"ID"`
 	StudentName string `json:"StudentName"`
@@ -27,46 +27,66 @@ type Certificate struct {
 	Grade       string `json:"Grade"`
 	IssuerID    string `json:"IssuerID"`
 	CertHash    string `json:"CertHash"`
-	Signature   string `json:"Signature"` // التوقيع الرقمي المولد خارجياً (من المصدر)
-	PublicKey   string `json:"PublicKey"` // المفتاح العام للتحقق من المصدر
+	Signature   string `json:"Signature"`
+	PublicKey   string `json:"PublicKey"`
 }
 
-// دالة التحقق من التوقيع الرقمي (خوارزمية ECDSA)
+// 1. دالة التحقق من التوقيع الرقمي (خوارزمية ECDSA - منهجية عمر سعد)
 func (s *SmartContract) verifySignature(hash string, signatureHex string, publicKeyPEM string) (bool, error) {
-	// 1. فك تشفير المفتاح العام من صيغة PEM
+	// أ. فك تشفير المفتاح العام من صيغة PEM
 	block, _ := pem.Decode([]byte(publicKeyPEM))
 	if block == nil {
-		return false, fmt.Errorf("failed to parse PEM block containing the public key")
+		return false, fmt.Errorf("فشل في معالجة كتلة PEM للمفتاح العام")
 	}
+
 	pubInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("فشل في تحليل المفتاح العام: %v", err)
 	}
-	pubKey := pubInterface.(*ecdsa.PublicKey)
 
-	// 2. فك تشفير التوقيع من Hex
-	sigBytes, _ := hex.DecodeString(signatureHex)
-	
-	// فك التوقيع إلى R و S (أجزاء توقيع ECDSA)
+	pubKey, ok := pubInterface.(*ecdsa.PublicKey)
+	if !ok {
+		return false, fmt.Errorf("المفتاح العام ليس من نوع ECDSA")
+	}
+
+	// ب. فك تشفير التوقيع من صيغة Hex
+	sigBytes, err := hex.DecodeString(signatureHex)
+	if err != nil {
+		return false, fmt.Errorf("فشل في فك تشفير التوقيع من Hex: %v", err)
+	}
+
+	// ج. استخراج قيم R و S من التوقيع (تقسيم التوقيع لنصفين)
 	r := new(big.Int).SetBytes(sigBytes[:len(sigBytes)/2])
 	sVal := new(big.Int).SetBytes(sigBytes[len(sigBytes)/2:])
 
-	// 3. التحقق الفعلي
-	hashBytes, _ := hex.DecodeString(hash)
+	// د. فك تشفير الهاش للمقارنة
+	hashBytes, err := hex.DecodeString(hash)
+	if err != nil {
+		return false, err
+	}
+
+	// هـ. التحقق النهائي باستخدام خوارزمية ECDSA
 	return ecdsa.Verify(pubKey, hashBytes, r, sVal), nil
 }
 
-// IssueCertificate: معدلة للتحقق من التوقيع قبل الحفظ
+// 2. دالة حساب SHA-3 (لضمان نزاهة البيانات)
+func calculateSHA3Hash(data string) string {
+	hash := sha3.New256()
+	hash.Write([]byte(data))
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// 3. دالة إصدار الشهادة (تدمج الهاش والتوقيع معاً)
 func (s *SmartContract) IssueCertificate(ctx contractapi.TransactionContextInterface, id string, studentName string, major string, university string, issueDate string, grade string, issuerID string, signature string, publicKey string) error {
 	
-	// حساب الهاش الأصلي للبيانات
+	// حساب الهاش SHA-3 للبيانات الأساسية
 	combinedData := fmt.Sprintf("%s%s%s%s", id, studentName, university, issueDate)
 	certHash := calculateSHA3Hash(combinedData)
 
-	// تطبيق خوارزمية عمر سعد: التحقق من أن التوقيع يخص هذه البيانات والمفتاح العام
+	// التحقق من التوقيع الرقمي قبل الحفظ (تطبيق منهجية عمر سعد)
 	isValid, err := s.verifySignature(certHash, signature, publicKey)
 	if err != nil || !isValid {
-		return fmt.Errorf("فشل التحقق من التوقيع الرقمي: الشهادة غير موثوقة المصدر")
+		return fmt.Errorf("تنبيه أمني: التوقيع الرقمي غير صالح، لا يمكن إصدار الشهادة")
 	}
 
 	cert := Certificate{
@@ -90,11 +110,11 @@ func (s *SmartContract) IssueCertificate(ctx contractapi.TransactionContextInter
 	return ctx.GetStub().PutState(id, certJSON)
 }
 
-// دالة الهاش SHA-3 المستمرة في العمل للنزاهة
-func calculateSHA3Hash(data string) string {
-	hash := sha3.New256()
-	hash.Write([]byte(data))
-	return hex.EncodeToString(hash.Sum(nil))
+// دالة التحقق من وجود الشهادة (تُستخدم داخلياً)
+func (s *SmartContract) CertificateExists(ctx contractapi.TransactionContextInterface, id string) (bool, error) {
+	certJSON, err := ctx.GetStub().GetState(id)
+	if err != nil {
+		return false, err
+	}
+	return certJSON != nil, nil
 }
-
-// ... بقية الدوال (Verify, Delete, Pagination) تبقى كما هي مع تحديث Struct الشهادة ...
