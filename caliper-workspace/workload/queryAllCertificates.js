@@ -23,7 +23,7 @@ class QueryAllCertificatesWorkload extends WorkloadModuleBase {
             
             // التعديل 2: إرسال المعاملات المطلوبة (pageSize و bookmark)
             // نحدد pageSize بـ '50' لتقليل حجم البيانات المسترجعة في كل طلب ومنع انهيار الذاكرة
-            contractArguments: ['50', ''], 
+            contractArguments: ['30', ''], 
             
             readOnly: true
         };
