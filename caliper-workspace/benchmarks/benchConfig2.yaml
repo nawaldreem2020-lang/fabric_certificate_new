@@ -1,11 +1,11 @@
 test:
-  name: comparative-tps-scaling-test
-  description: اختبار التوسع المباشر من 50 إلى 200 TPS لمقارنة النتائج مع الدراسات المرجعية.
+  name: certificate-comprehensive-scaling-test
+  description: اختبار شامل لقياس أداء إصدار وتحقق واستعلام الشهادات باستخدام SHA-3 وECDSA.
   workers:
     type: local
-    number: 2
+    number: 1 # نصيحة تقنية: استخدامه 1 يمنع اختناق المعالج عند حساب التواقيع الرقمية
   rounds:
-    # المرحلة 1: 50 TPS
+    # --- القسم الأول: إصدار الشهادات (عمليات الكتابة - أثقل العمليات) ---
     - label: Issue-Cert-50TPS
       txDuration: 30
       rateControl:
@@ -15,7 +15,6 @@ test:
       workload:
         module: workload/issueCertificate.js
 
-    # المرحلة 2: 100 TPS
     - label: Issue-Cert-100TPS
       txDuration: 30
       rateControl:
@@ -25,17 +24,6 @@ test:
       workload:
         module: workload/issueCertificate.js
 
-    # المرحلة 3: 150 TPS
-    - label: Issue-Cert-150TPS
-      txDuration: 30
-      rateControl:
-        type: fixed-rate
-        opts:
-          tps: 150
-      workload:
-        module: workload/issueCertificate.js
-
-    # المرحلة 4: 200 TPS (المرحلة الحاسمة)
     - label: Issue-Cert-200TPS
       txDuration: 30
       rateControl:
@@ -45,12 +33,24 @@ test:
       workload:
         module: workload/issueCertificate.js
 
-    # جولة تحقق إضافية عند أقصى ضغط لإثبات كفاءة SHA-3
-    - label: Verify-Cert-At-200TPS
+    # --- القسم الثاني: التحقق الفوري (عمليات حسابية - متوسطة الثقل) ---
+    - label: Verify-Cert-Scaling
+      description: اختبار قدرة النظام على التحقق من صحة الهاش عند ضغط 150 TPS.
       txDuration: 30
       rateControl:
         type: fixed-rate
         opts:
-          tps: 200
+          tps: 150
       workload:
         module: workload/verifyCertificate.js
+
+    # --- القسم الثالث: الاستعلام الشامل (عمليات القراءة - الأخف بفضل Pagination) ---
+    - label: Query-All-Pagination-Final
+      description: الاستعلام عن كافة الشهادات باستخدام تقنية التقسيم لضمان ثبات الأداء.
+      txDuration: 30
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/queryAllCertificates.js
